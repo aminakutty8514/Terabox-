@@ -1,92 +1,70 @@
-import asyncio
-asyncio.set_event_loop(asyncio.new_event_loop())
-
+import os
+import requests
+import time
 from pyrogram import Client, filters
-from pyrogram.errors import MessageNotModified
-import os, requests, re, threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-api_id = int(os.getenv("TELEGRAM_API_ID"))
-api_hash = os.getenv("TELEGRAM_API_HASH")
-bot_token = os.getenv("BOT_TOKEN")
-worker_url = os.getenv("WORKER_URL")
+# Environment Variables (Render/Railway-il set cheyyuka)
+API_ID = int(os.environ.get("API_ID", "12345"))
+API_HASH = os.environ.get("API_HASH", "your_api_hash")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token")
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-    def log_message(self, *args):
-        pass
+app = Client("terabox_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def run_server():
-    server = HTTPServer(("0.0.0.0", 10000), Handler)
-    server.serve_forever()
+API_URL = "https://silent-noor-stream-api.woodmirror.workers.dev/api?url="
 
-threading.Thread(target=run_server, daemon=True).start()
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    await message.reply_text("TeraBox link ayakkuka, njan athu download cheythu tharaam!")
 
-app = Client("terabox_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+@app.on_message(filters.text & filters.private)
+async def handle_terabox(client, message):
+    url = message.text.strip()
+    if "terabox" not in url and "1024terabox" not in url:
+        return
 
-def get_download_link(url):
+    status = await message.reply_text("🔎 `Fetching details...`", quote=True)
+
     try:
-        resp = requests.get(
-            worker_url,
-            params={"url": url},
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=15
-        )
-        print("Response:", resp.status_code, resp.text[:200])
-        data = resp.json()
+        # API Request
+        res = requests.get(f"{API_URL}{url}").json()
+        if res.get("status") != "✅ Successfully":
+            await status.edit("❌ Link valid alla ennu thonnunnu.")
+            return
 
-        if data.get("status") == "✅ Successfully":
-            return {
-                "name": data.get("file_name", "TeraBox File"),
-                "size": int(data.get("size_bytes", 0)),
-                "dlink": data.get("download_link", ""),
-            }, None
-        else:
-            return None, str(data)
+        file_name = res.get("file_name")
+        download_url = res.get("download_link")
+        
+        await status.edit(f"📥 `Downloading: {file_name}`")
+
+        # Download path
+        path = f"./downloads/{time.time()}_{file_name}"
+        if not os.path.exists("./downloads"):
+            os.makedirs("./downloads")
+
+        # Memory efficient download
+        with requests.get(download_url, stream=True) as r:
+            r.raise_for_status()
+            with open(path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024*1024): # 1MB chunks
+                    f.write(chunk)
+
+        await status.edit("📤 `Uploading to Telegram...`")
+
+        # Uploading to Telegram
+        await message.reply_document(
+            document=path,
+            caption=f"**File:** `{file_name}`\n**Size:** {res.get('file_size')}",
+            quote=True
+        )
+
+        # Cleanup
+        os.remove(path)
+        await status.delete()
 
     except Exception as e:
-        return None, f"Exception: {str(e)}"
+        await status.edit(f"❌ Error: {str(e)}")
+        if os.path.exists(path):
+            os.remove(path)
 
-def format_size(size):
-    for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
-
-@app.on_message(filters.text)
-async def handler(_, m):
-    if "terabox.com" not in m.text.lower() and "terabox.app" not in m.text.lower():
-        return
-
-    urls = re.findall(r'https?://[^\s]+terabox[^\s]+', m.text, re.IGNORECASE)
-    if not urls:
-        await m.reply("❌ Valid TeraBox link കണ്ടെത്തിയില്ല.")
-        return
-
-    msg = await m.reply("⏳ Processing your TeraBox link...")
-
-    info, error = get_download_link(urls[0])
-
-    if error:
-        try:
-            await msg.edit(f"❌ Failed: {error}")
-        except MessageNotModified:
-            pass
-        return
-
-    text = (
-        f"📁 **{info['name']}**\n"
-        f"📦 Size: {format_size(info['size'])}\n\n"
-        f"⬇️ [Download Link]({info['dlink']})"
-    )
-    try:
-        await msg.edit(text, disable_web_page_preview=True)
-    except MessageNotModified:
-        pass
-
-if __name__ == "__main__":
-    app.run()
+app.run()
