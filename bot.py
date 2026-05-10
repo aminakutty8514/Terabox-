@@ -9,6 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 api_id = int(os.getenv("TELEGRAM_API_ID"))
 api_hash = os.getenv("TELEGRAM_API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
+worker_url = os.getenv("WORKER_URL")
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -33,7 +34,7 @@ def get_download_link(url):
         }
 
         resp = requests.get(
-            "https://terabox.fun/api",
+            worker_url,
             params={"url": url},
             headers=headers,
             timeout=15
@@ -44,28 +45,20 @@ def get_download_link(url):
             data = resp.json()
             print("Data:", data)
 
-            dlink = (
-                data.get("download_link") or
-                data.get("link") or
-                data.get("url") or
-                data.get("dlink") or
-                (data.get("data") or {}).get("download_link") or
-                ""
-            )
-            name = (
-                data.get("file_name") or
-                data.get("name") or
-                data.get("title") or
-                "TeraBox File"
-            )
-            size = int(data.get("size") or 0)
-
-            if dlink:
-                return {"name": name, "size": size, "dlink": dlink}, None
+            if data.get("errno") == 0:
+                file_list = data.get("list", [])
+                if file_list:
+                    file = file_list[0]
+                    return {
+                        "name": file.get("server_filename", "TeraBox File"),
+                        "size": int(file.get("size", 0)),
+                        "dlink": file.get("dlink", ""),
+                    }, None
+                return None, "No files found"
             else:
-                return None, f"No download link: {data}"
+                return None, f"Error {data.get('errno')}: {data.get('errmsg')}"
         else:
-            return None, f"API returned: {resp.status_code} - {resp.text[:100]}"
+            return None, f"API returned: {resp.status_code}"
 
     except Exception as e:
         return None, f"Exception: {str(e)}"
