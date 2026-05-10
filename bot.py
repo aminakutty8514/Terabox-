@@ -28,34 +28,45 @@ app = Client("terabox_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_toke
 
 def get_download_link(url):
     try:
-        # Free public API — login വേണ്ട
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+
+        # API 1
         resp = requests.get(
-            "https://api.terabox.tech/api",
-            params={"url": url},
-            headers={"User-Agent": "Mozilla/5.0"},
+            f"https://teradownloader.com/api?url={url}",
+            headers=headers,
             timeout=15
         )
-        data = resp.json()
-        print("API Response:", data)
+        print("Raw response:", resp.status_code, resp.text[:200])
 
-        # Different response formats handle ചെയ്യുക
-        if isinstance(data, list) and len(data) > 0:
-            file = data[0]
-            return {
-                "name": file.get("file_name") or file.get("name", "Unknown"),
-                "size": int(file.get("size", 0)),
-                "dlink": file.get("link") or file.get("download_link") or file.get("url", ""),
-            }, None
-        elif isinstance(data, dict):
-            if data.get("status") == "success" or data.get("ok"):
+        if resp.status_code == 200 and resp.text.strip():
+            data = resp.json()
+            if data.get("status") == "success" or data.get("download_link"):
                 return {
-                    "name": data.get("file_name") or data.get("name", "Unknown"),
+                    "name": data.get("file_name", "TeraBox File"),
                     "size": int(data.get("size", 0)),
-                    "dlink": data.get("link") or data.get("download_link") or data.get("url", ""),
+                    "dlink": data.get("download_link") or data.get("link", ""),
                 }, None
-            else:
-                return None, str(data)
-        return None, "Unknown response format"
+
+        # API 2
+        resp2 = requests.get(
+            f"https://tera.instavideosave.com/",
+            params={"url": url},
+            headers=headers,
+            timeout=15
+        )
+        print("Raw response2:", resp2.status_code, resp2.text[:200])
+
+        if resp2.status_code == 200 and resp2.text.strip():
+            data2 = resp2.json()
+            return {
+                "name": data2.get("file_name", "TeraBox File"),
+                "size": int(data2.get("size", 0)),
+                "dlink": data2.get("url") or data2.get("download_link", ""),
+            }, None
+
+        return None, "All APIs failed — TeraBox is blocking requests"
 
     except Exception as e:
         return None, f"Exception: {str(e)}"
