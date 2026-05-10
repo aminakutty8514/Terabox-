@@ -32,41 +32,40 @@ def get_download_link(url):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
 
-        # API 1
         resp = requests.get(
-            f"https://teradownloader.com/api?url={url}",
-            headers=headers,
-            timeout=15
-        )
-        print("Raw response:", resp.status_code, resp.text[:200])
-
-        if resp.status_code == 200 and resp.text.strip():
-            data = resp.json()
-            if data.get("status") == "success" or data.get("download_link"):
-                return {
-                    "name": data.get("file_name", "TeraBox File"),
-                    "size": int(data.get("size", 0)),
-                    "dlink": data.get("download_link") or data.get("link", ""),
-                }, None
-
-        # API 2
-        resp2 = requests.get(
-            f"https://tera.instavideosave.com/",
+            "https://terabox.fun/api",
             params={"url": url},
             headers=headers,
             timeout=15
         )
-        print("Raw response2:", resp2.status_code, resp2.text[:200])
+        print("Response:", resp.status_code, resp.text[:300])
 
-        if resp2.status_code == 200 and resp2.text.strip():
-            data2 = resp2.json()
-            return {
-                "name": data2.get("file_name", "TeraBox File"),
-                "size": int(data2.get("size", 0)),
-                "dlink": data2.get("url") or data2.get("download_link", ""),
-            }, None
+        if resp.status_code == 200 and resp.text.strip():
+            data = resp.json()
+            print("Data:", data)
 
-        return None, "All APIs failed — TeraBox is blocking requests"
+            dlink = (
+                data.get("download_link") or
+                data.get("link") or
+                data.get("url") or
+                data.get("dlink") or
+                (data.get("data") or {}).get("download_link") or
+                ""
+            )
+            name = (
+                data.get("file_name") or
+                data.get("name") or
+                data.get("title") or
+                "TeraBox File"
+            )
+            size = int(data.get("size") or 0)
+
+            if dlink:
+                return {"name": name, "size": size, "dlink": dlink}, None
+            else:
+                return None, f"No download link: {data}"
+        else:
+            return None, f"API returned: {resp.status_code} - {resp.text[:100]}"
 
     except Exception as e:
         return None, f"Exception: {str(e)}"
