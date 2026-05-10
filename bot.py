@@ -29,36 +29,23 @@ app = Client("terabox_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_toke
 
 def get_download_link(url):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        }
-
         resp = requests.get(
             worker_url,
             params={"url": url},
-            headers=headers,
+            headers={"User-Agent": "Mozilla/5.0"},
             timeout=15
         )
-        print("Response:", resp.status_code, resp.text[:300])
+        print("Response:", resp.status_code, resp.text[:200])
+        data = resp.json()
 
-        if resp.status_code == 200 and resp.text.strip():
-            data = resp.json()
-            print("Data:", data)
-
-            if data.get("errno") == 0:
-                file_list = data.get("list", [])
-                if file_list:
-                    file = file_list[0]
-                    return {
-                        "name": file.get("server_filename", "TeraBox File"),
-                        "size": int(file.get("size", 0)),
-                        "dlink": file.get("dlink", ""),
-                    }, None
-                return None, "No files found"
-            else:
-                return None, f"Error {data.get('errno')}: {data.get('errmsg')}"
+        if data.get("status") == "✅ Successfully":
+            return {
+                "name": data.get("file_name", "TeraBox File"),
+                "size": int(data.get("size_bytes", 0)),
+                "dlink": data.get("download_link", ""),
+            }, None
         else:
-            return None, f"API returned: {resp.status_code}"
+            return None, str(data)
 
     except Exception as e:
         return None, f"Exception: {str(e)}"
